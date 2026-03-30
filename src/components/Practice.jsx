@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import { supabase, callClaude, SYSTEM_TUTOR } from '../lib/api'
 import ReactMarkdown from 'react-markdown'
+import { supabase, callClaude, SYSTEM_TUTOR } from '../lib/api'
 
 const TYPES = [
   { id: 'fill',     label: 'Completar frase' },
@@ -11,16 +11,33 @@ const TYPES = [
 
 export default function Practice({ refreshKey, onDone }) {
   const [type, setType] = useState('quiz')
+  const [lessons, setLessons] = useState([])
+  const [selectedLesson, setSelectedLesson] = useState('all')
   const [vocab, setVocab] = useState([])
   const [loading, setLoading] = useState(false)
   const [exercise, setExercise] = useState(null)
   const [quizState, setQuizState] = useState(null)
   const [answered, setAnswered] = useState(false)
 
-  useEffect(() => { loadVocab() }, [refreshKey])
+  useEffect(() => { loadLessons() }, [refreshKey])
+  useEffect(() => { loadVocab() }, [selectedLesson, refreshKey])
+
+  async function loadLessons() {
+    const { data } = await supabase
+      .from('lessons')
+      .select('id, topic, created_at')
+      .order('created_at', { ascending: false })
+    setLessons(data || [])
+  }
 
   async function loadVocab() {
-    const { data } = await supabase.from('vocabulary').select('*').order('created_at', { ascending: false }).limit(30)
+    let query = supabase.from('vocabulary').select('*')
+    if (selectedLesson !== 'all') {
+      query = query.eq('lesson_id', selectedLesson)
+    } else {
+      query = query.order('created_at', { ascending: false }).limit(30)
+    }
+    const { data } = await query
     setVocab(data || [])
   }
 
@@ -31,12 +48,16 @@ export default function Practice({ refreshKey, onDone }) {
     setQuizState(null)
     setAnswered(false)
 
-    const sample = vocab.slice(0, 15).map(v => `${v.fr} (${v.es})`).join(', ')
+    const lessonLabel = selectedLesson === 'all'
+      ? 'vocabulario general'
+      : lessons.find(l => l.id === selectedLesson)?.topic || 'esta lección'
+
+    const sample = vocab.map(v => `${v.fr} (${v.es})`).join(', ')
 
     if (type === 'quiz') {
       const data = await callClaude(
         SYSTEM_TUTOR,
-        `Con este vocabulario francés: ${sample}\nCrea 1 pregunta de opción múltiple (4 opciones). Mezcla español→francés y francés→español. JSON: {"pregunta":"...","opciones":["a","b","c","d"],"correcta":0,"explicacion":"..."}`,
+        `Lección: "${lessonLabel}". Vocabulario: ${sample}\nCrea 1 pregunta de opción múltiple (4 opciones). Mezcla español→francés y francés→español. JSON: {"pregunta":"...","opciones":["a","b","c","d"],"correcta":0,"explicacion":"..."}`,
         true
       )
       if (data) {
@@ -45,9 +66,9 @@ export default function Practice({ refreshKey, onDone }) {
       }
     } else {
       const prompts = {
-        fill: `Con este vocabulario: ${sample}\nCrea 3 ejercicios de completar frase (una palabra faltante marcada con ___). Incluye la respuesta entre paréntesis al final de cada frase. Formato simple, legible.`,
-        translate: `Con este vocabulario: ${sample}\nCrea 4 ejercicios de traducción mezclando Español→Francés y Francés→Español. Escribe la respuesta al final de cada uno entre corchetes []. Formato simple.`,
-        grammar: `Del siguiente vocabulario: ${sample}\nElige una palabra o expresión interesante y explica en español la regla gramatical que representa, con 2-3 ejemplos adicionales en francés con traducción. Sé pedagógico y conciso.`,
+        fill:      `Lección: "${lessonLabel}". Vocabulario: ${sample}\nCrea 3 ejercicios de completar frase (una palabra faltante marcada con ___). Incluye la respuesta entre paréntesis al final. Formato simple.`,
+        translate: `Lección: "${lessonLabel}". Vocabulario: ${sample}\nCrea 4 ejercicios de traducción mezclando Español→Francés y Francés→Español. Respuesta al final entre corchetes [].`,
+        grammar:   `Lección: "${lessonLabel}". Vocabulario: ${sample}\nElige la estructura gramatical más interesante de esta lección y explícala en español con 2-3 ejemplos prácticos en francés con traducción.`,
       }
       const text = await callClaude(SYSTEM_TUTOR, prompts[type])
       setExercise({ type, text })
@@ -68,13 +89,46 @@ export default function Practice({ refreshKey, onDone }) {
     setQuizState(q => ({ ...q, selected: i }))
   }
 
+  const currentLessonLabel = selectedLesson === 'all'
+    ? 'Todo el vocabulario'
+    : lessons.find(l => l.id === selectedLesson)?.topic || ''
+
   return (
     <div>
       <div className="card">
-        <div className="card-title">Ejercicios</div>
-        <div className="card-sub">La IA genera ejercicios basados en tu vocabulario acumulado.</div>
+        <div className="card-title">Practicar</div>
+        <div className="card-sub">Elige una lección específica o practica con todo tu vocabulario.</div>
 
-        <div className="mode-row">
+        <div className="label" style={{ marginBottom: '8px' }}>Lección</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '1.25rem' }}>
+          <button
+            className={`btn btn-ghost ${selectedLesson === 'all' ? 'active' : ''}`}
+            style={{ fontSize: '12px', padding: '5px 12px' }}
+            onClick={() => setSelectedLesson('all')}
+          >
+            Todo
+          </button>
+          {lessons.map(l => (
+            <button
+              key={l.id}
+              className={`btn btn-ghost ${selectedLesson === l.id ? 'active' : ''}`}
+              style={{ fontSize: '12px', padding: '5px 12px' }}
+              onClick={() => setSelectedLesson(l.id)}
+            >
+              {l.topic}
+            </button>
+          ))}
+        </div>
+
+        {vocab.length > 0 && (
+          <div style={{ fontSize: '12px', color: 'var(--text3)', marginBottom: '1rem' }}>
+            {vocab.length} palabras disponibles
+            {selectedLesson !== 'all' && ` · ${currentLessonLabel}`}
+          </div>
+        )}
+
+        <div className="label" style={{ marginBottom: '8px' }}>Tipo de ejercicio</div>
+        <div className="mode-row" style={{ marginBottom: '1rem' }}>
           {TYPES.map(t => (
             <button
               key={t.id}
@@ -101,6 +155,9 @@ export default function Practice({ refreshKey, onDone }) {
 
       {exercise?.type === 'quiz' && quizState && (
         <div className="card">
+          <div style={{ fontSize: '11px', color: 'var(--text3)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+            {currentLessonLabel}
+          </div>
           <div style={{ fontSize: '15px', fontWeight: 500, color: 'var(--text)', marginBottom: '1rem' }}>
             {quizState.pregunta}
           </div>
@@ -132,8 +189,12 @@ export default function Practice({ refreshKey, onDone }) {
 
       {exercise && exercise.type !== 'quiz' && (
         <div className="card">
-          <div className="label">{TYPES.find(t => t.id === exercise.type)?.label}</div>
-          <div className="ai-box"><ReactMarkdown>{exercise.text}</ReactMarkdown></div>
+          <div style={{ fontSize: '11px', color: 'var(--text3)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+            {currentLessonLabel} · {TYPES.find(t => t.id === exercise.type)?.label}
+          </div>
+          <div className="ai-box">
+            <ReactMarkdown>{exercise.text}</ReactMarkdown>
+          </div>
           <div style={{ marginTop: '1rem', display: 'flex', gap: '8px' }}>
             <button className="btn btn-ghost" onClick={() => recordResult(true)}>✓ Lo supe</button>
             <button className="btn btn-ghost" onClick={() => recordResult(false)}>✗ Me costó</button>
