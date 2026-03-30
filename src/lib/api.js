@@ -2,7 +2,6 @@ import { createClient } from '@supabase/supabase-js'
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || ''
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || ''
-const CLAUDE_API_KEY = import.meta.env.VITE_CLAUDE_API_KEY || ''
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
 
@@ -10,13 +9,10 @@ export async function callClaude(systemPrompt, userPrompt, jsonMode = false) {
   const system = jsonMode
     ? systemPrompt + '\n\nResponde ÚNICAMENTE con JSON válido. Sin texto adicional, sin bloques markdown.'
     : systemPrompt
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const res = await fetch('/api/claude', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-api-key': CLAUDE_API_KEY,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-calls': 'true',
     },
     body: JSON.stringify({
       model: 'claude-sonnet-4-20250514',
