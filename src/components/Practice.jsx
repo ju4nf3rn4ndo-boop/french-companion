@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase, callClaude, SYSTEM_TUTOR } from '../lib/api'
+import ReactMarkdown from 'react-markdown'
 
 const TYPES = [
   { id: 'fill',     label: 'Completar frase' },
@@ -132,7 +133,7 @@ export default function Practice({ refreshKey, onDone }) {
       {exercise && exercise.type !== 'quiz' && (
         <div className="card">
           <div className="label">{TYPES.find(t => t.id === exercise.type)?.label}</div>
-          <div className="ai-box">{exercise.text}</div>
+          <div className="ai-box"><ReactMarkdown>{exercise.text}</ReactMarkdown></div>
           <div style={{ marginTop: '1rem', display: 'flex', gap: '8px' }}>
             <button className="btn btn-ghost" onClick={() => recordResult(true)}>✓ Lo supe</button>
             <button className="btn btn-ghost" onClick={() => recordResult(false)}>✗ Me costó</button>
